@@ -11,7 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart'
   if (dart.library.html) 'package:web_socket_channel/html.dart'
   if (dart.library.io) 'package:web_socket_channel/io.dart';
-
+import 'package:web_socket_channel/web_socket_channel.dart';
 class CollabEditor extends StatefulWidget {
   final String documentId;
   final String userId;
@@ -26,6 +26,7 @@ class _CollabEditorState extends State<CollabEditor> {
   late final WebSocketChannel _channel;
   Timer? _autosaveTimer;
   int _version = 1; // Track local version
+  bool _hasSend = false;
 
   @override
   void initState() {
@@ -45,7 +46,7 @@ class _CollabEditorState extends State<CollabEditor> {
         final data = message is String
             ? jsonDecode(message)
             : jsonDecode(utf8.decode(message));
-          if (data['type'] == 'delta_update') {
+          if (data['type'] == 'delta_update' && data['document_id'] == widget.documentId) {
             final delta = Delta.fromJson(data['delta']);
             _controller.compose(delta, _controller.selection, ChangeSource.remote);
             //print("🔁 Applying delta: $delta");
@@ -75,6 +76,10 @@ class _CollabEditorState extends State<CollabEditor> {
         });
         _channel.sink.add(message);
         print(message);
+        if (!_hasSend) {
+          _hasSend = true;
+          _sendEditNotification(widget.userId,widget.documentId);
+        }
         _scheduleAutoSave();
       }
     });
@@ -216,6 +221,24 @@ class _CollabEditorState extends State<CollabEditor> {
         ],
       ),
     );
+  }
+  Future<void> _sendEditNotification(String editor, String documentId) async {
+    final uri = Uri.parse('https://qidsrvq581.execute-api.ap-southeast-1.amazonaws.com/dev/send_edit_notification');
+
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'editor': editor,
+        'documentId': documentId,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      print('✅ Email đã được gửi!');
+    } else {
+      print('❌ Thất bại: ${response.body}');
+    }
   }
 
   @override
